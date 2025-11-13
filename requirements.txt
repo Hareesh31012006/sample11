@@ -1,6 +1,6 @@
 streamlit==1.27.0
 pandas==2.1.0
-numpy==1.27.0
+numpy==1.26.4
 yfinance==0.2.27
 textblob==0.17.1
 matplotlib==3.7.1
