@@ -40,40 +40,39 @@ except LookupError:
 
 @st.cache_data(show_spinner=False)
 def fetch_stock_data(ticker: str, start: str, end: str) -> pd.DataFrame:
-    """Fetch daily historical data from Yahoo Finance with retry and fallback."""
+    """Fetch daily historical data from Yahoo Finance with retry and fallback to CSV."""
+    csv_path = f"{ticker.upper()}_fallback.csv"
+
+    # Try local CSV first
+    if os.path.exists(csv_path):
+        try:
+            df = pd.read_csv(csv_path, parse_dates=['Date'], index_col='Date')
+            df = df.loc[start:end] if start and end else df
+            df = df.resample('D').mean().interpolate('linear')
+            st.warning(f"Using local CSV fallback for {ticker}.")
+            return df
+        except Exception as e:
+            st.error(f"Failed to load local CSV for {ticker}: {e}")
+
+    # Try Yahoo Finance up to 3 times
     df = pd.DataFrame()
-    
     for attempt in range(3):
         try:
             df = yf.download(ticker, start=start, end=end, progress=False)
             if not df.empty:
-                df = df[['Close']]
-                df = df.resample('D').mean().interpolate(method='linear')
-                df.to_csv(f"{ticker.upper()}_fallback.csv")
+                df = df[['Close']].resample('D').mean().interpolate('linear')
+                df.to_csv(csv_path)  # save fallback CSV
                 return df
         except Exception as e:
             st.write(f"Attempt {attempt+1} failed: {e}")
             time.sleep(2)
-
-    # Fallback to local CSV
-    csv_path = f"{ticker.upper()}_fallback.csv"
-    if os.path.exists(csv_path):
-        try:
-            df = pd.read_csv(csv_path, parse_dates=['Date'], index_col='Date')
-            if 'Close' in df.columns:
-                df = df.loc[start:end] if start and end else df
-                df = df.resample('D').mean().interpolate(method='linear')
-                st.warning(f"Using local CSV fallback for {ticker}.")
-                return df
-        except Exception as e:
-            st.error(f"Failed to load local CSV for {ticker}: {e}")
 
     st.error(f"No market data available for {ticker}.")
     return pd.DataFrame()
 
 @st.cache_data(show_spinner=False)
 def fetch_news_sentiment(ticker: str, dates_index: pd.DatetimeIndex) -> pd.Series:
-    """Fetch news sentiment; fallback to neutral if unavailable."""
+    """Fetch news sentiment via yfinance; fallback to neutral if unavailable."""
     try:
         tk = yf.Ticker(ticker)
         raw_news = tk.news
