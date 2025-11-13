@@ -5,7 +5,8 @@ Streamlit Stock Analyzer with BI-LSTM + Sentiment
 - Shows plots and gives a simple Buy/Hold/Sell suggestion
 """
 import nltk
-nltk.download('punkt')
+nltk.download('punkt', quiet=True)
+
 
 import streamlit as st
 import pandas as pd
