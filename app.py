@@ -4,6 +4,8 @@ Streamlit Stock Analyzer with BI-LSTM + Sentiment
 - Trains a Bi-LSTM model on the last N days, predicts next-day(s)
 - Shows plots and gives a simple Buy/Hold/Sell suggestion
 """
+import nltk
+nltk.download('punkt')
 
 import streamlit as st
 import pandas as pd
