@@ -18,6 +18,8 @@ from tensorflow.keras.callbacks import EarlyStopping
 from sklearn.preprocessing import MinMaxScaler
 from sklearn.metrics import mean_absolute_error, mean_squared_error
 import nltk
+st.set_page_config(page_title="BI-LSTM Stock Analyzer", layout="wide")
+
 
 # ---------------------------
 # Auto-download TextBlob corpora
