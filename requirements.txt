@@ -1,9 +1,9 @@
 streamlit==1.29.0
-pandas==2.1.0
+pandas==2.0.3
 numpy==1.26.0
 yfinance==0.2.27
 textblob==0.17.1
 matplotlib==3.8.0
 joblib==1.3.2
-tensorflow==2.14.0
+tensorflow==2.13.0
 scikit-learn==1.3.0
