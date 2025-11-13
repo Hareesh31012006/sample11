@@ -7,6 +7,7 @@ from datetime import datetime, timedelta
 import os
 import joblib
 import matplotlib.pyplot as plt
+import time
 
 # ML / DL
 import tensorflow as tf
@@ -16,6 +17,22 @@ from tensorflow.keras.optimizers import Adam
 from tensorflow.keras.callbacks import EarlyStopping
 from sklearn.preprocessing import MinMaxScaler
 from sklearn.metrics import mean_absolute_error, mean_squared_error
+import nltk
+
+# ---------------------------
+# Auto-download TextBlob corpora
+# ---------------------------
+try:
+    nltk.data.find('tokenizers/punkt')
+except LookupError:
+    with st.spinner("Downloading TextBlob corpora..."):
+        nltk.download('punkt')
+        nltk.download('averaged_perceptron_tagger')
+        nltk.download('wordnet')
+        nltk.download('brown')
+        nltk.download('movie_reviews')
+        nltk.download('vader_lexicon')
+    st.success("TextBlob corpora downloaded successfully!")
 
 # ---------------------------
 # Utility & Caching functions
@@ -23,18 +40,40 @@ from sklearn.metrics import mean_absolute_error, mean_squared_error
 
 @st.cache_data(show_spinner=False)
 def fetch_stock_data(ticker: str, start: str, end: str) -> pd.DataFrame:
-    """Fetches daily historical data from Yahoo Finance and resamples to business days (D)."""
-    df = yf.download(ticker, start=start, end=end, progress=False)
-    if df.empty:
-        return pd.DataFrame()
-    df = df[['Close']]
-    # Ensure daily freq & fill small gaps
-    df = df.resample('D').mean().interpolate(method='linear')
-    return df
+    """Fetch daily historical data from Yahoo Finance with retry and fallback."""
+    df = pd.DataFrame()
+    
+    for attempt in range(3):
+        try:
+            df = yf.download(ticker, start=start, end=end, progress=False)
+            if not df.empty:
+                df = df[['Close']]
+                df = df.resample('D').mean().interpolate(method='linear')
+                df.to_csv(f"{ticker.upper()}_fallback.csv")
+                return df
+        except Exception as e:
+            st.write(f"Attempt {attempt+1} failed: {e}")
+            time.sleep(2)
+
+    # Fallback to local CSV
+    csv_path = f"{ticker.upper()}_fallback.csv"
+    if os.path.exists(csv_path):
+        try:
+            df = pd.read_csv(csv_path, parse_dates=['Date'], index_col='Date')
+            if 'Close' in df.columns:
+                df = df.loc[start:end] if start and end else df
+                df = df.resample('D').mean().interpolate(method='linear')
+                st.warning(f"Using local CSV fallback for {ticker}.")
+                return df
+        except Exception as e:
+            st.error(f"Failed to load local CSV for {ticker}: {e}")
+
+    st.error(f"No market data available for {ticker}.")
+    return pd.DataFrame()
 
 @st.cache_data(show_spinner=False)
 def fetch_news_sentiment(ticker: str, dates_index: pd.DatetimeIndex) -> pd.Series:
-    """Fetches news sentiment for each day; fallback to neutral if unavailable."""
+    """Fetch news sentiment; fallback to neutral if unavailable."""
     try:
         tk = yf.Ticker(ticker)
         raw_news = tk.news
@@ -132,7 +171,6 @@ if analyze_button:
                 st.subheader(f"{ticker.upper()} - Recent Data")
                 st.write(df2.tail(10))
 
-            # Scaling Close and Sentiment separately
             scaler_close = MinMaxScaler()
             scaler_sentiment = MinMaxScaler()
             df_scaled = df2.copy()
@@ -152,7 +190,6 @@ if analyze_button:
                 scaler_close_path = f"scaler_close_{ticker.upper()}_lb{lookback}.joblib"
                 scaler_sent_path = f"scaler_sent_{ticker.upper()}_lb{lookback}.joblib"
 
-                # Clear model cache if retrain
                 if retrain:
                     build_model.clear()
                     for f in [model_path, scaler_close_path, scaler_sent_path]:
@@ -161,7 +198,6 @@ if analyze_button:
 
                 model = build_model(input_shape)
 
-                # Load model if exists
                 loaded_from_file = False
                 if os.path.exists(model_path) and not retrain:
                     try:
@@ -170,7 +206,6 @@ if analyze_button:
                     except Exception:
                         loaded_from_file = False
 
-                # Train if needed
                 if not loaded_from_file:
                     with st.spinner("Training Bi-LSTM model..."):
                         es = EarlyStopping(monitor='val_loss', patience=10, restore_best_weights=True)
@@ -186,13 +221,10 @@ if analyze_button:
                         joblib.dump(scaler_close, scaler_close_path)
                         joblib.dump(scaler_sentiment, scaler_sent_path)
 
-                # Predictions
                 preds_scaled = model.predict(X_test)
-                # inverse transform Close only
                 preds_inv = scaler_close.inverse_transform(preds_scaled)
                 actual_inv = scaler_close.inverse_transform(y_test.reshape(-1,1))
 
-                # Metrics
                 mae = mean_absolute_error(actual_inv, preds_inv)
                 rmse = np.sqrt(mean_squared_error(actual_inv, preds_inv))
 
@@ -206,7 +238,6 @@ if analyze_button:
                     ax.legend()
                     st.pyplot(fig)
 
-                # Forecast next day
                 last_seq = df_scaled.values[-lookback:].reshape(1, lookback, df_scaled.shape[1])
                 next_scaled = model.predict(last_seq)
                 next_close = scaler_close.inverse_transform(next_scaled)[0,0]
