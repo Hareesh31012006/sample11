@@ -33,15 +33,25 @@ from sklearn.metrics import mean_absolute_error, mean_squared_error
 @st.cache_data(show_spinner=False)
 def fetch_stock_data(ticker: str, start: str, end: str) -> pd.DataFrame:
     """
-    Fetches daily historical data from Yahoo Finance and resamples to business days (D).
+    Fetches daily historical data from Yahoo Finance.
+    Uses yf.download() first; if it fails, falls back to Ticker.history().
     """
-    df = yf.download(ticker, start=start, end=end, progress=False)
-    if df.empty:
-        return pd.DataFrame()
+    try:
+        df = yf.download(ticker, start=start, end=end, progress=False)
+        if df.empty:
+            raise ValueError("yf.download returned empty data")
+    except Exception:
+        # Fallback to Ticker.history()
+        tk = yf.Ticker(ticker)
+        df = tk.history(start=start, end=end)
+        if df.empty:
+            return pd.DataFrame()
+
     df = df[['Close']].rename(columns={'Close': 'Close'})
     # Ensure daily freq & fill small gaps
     df = df.resample('D').mean().interpolate(method='linear')
     return df
+
 
 @st.cache_data(show_spinner=False)
 def fetch_news_sentiment(ticker: str, dates_index: pd.DatetimeIndex) -> pd.Series:
